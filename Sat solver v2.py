@@ -4,6 +4,7 @@ from random import choice, sample
 from copy import deepcopy
 from timeit import default_timer as timer
 import sys
+import numpy as np
 sys.setrecursionlimit(5000)
 
 rules_filename = 'sudoku-rules.txt'
@@ -130,13 +131,12 @@ def set_clause(rules, result, variables_to_set):
 
 
 def simplify_rules(rules, result, first_it=False):
-    variables_to_set = list()
 
     rules, unit_clauses, action = check_tautology_unit(rules, first_it)
     if action == 'Backtrack':
         return rules, result, 'Backtrack'
 
-    variables_to_set.extend(check_pure_literals(rules))
+    variables_to_set = check_pure_literals(rules)
     variables_to_set.extend(unit_clauses)
 
     variables_to_set = list(chain.from_iterable(variables_to_set))
@@ -171,17 +171,35 @@ def backtrack(history):
         putnam(rules, result, history)
 
 
-def split(rules, result, history):
+def split(rules, result, history, heuristic='Random'):
     global split_counter
     split_counter += 1
 
-    # IMPLEMENT HEURISTIC HERE
-    variable = choice(list(set(chain.from_iterable(rules))))
+    if heuristic == 'Deter':
+        variable = heuristic1(rules)
+    elif heuristic == 'Prob':
+        variable = heuristic2(rules)
+    else:  # heuristic == 'Random'
+        variable = choice(list(set(chain.from_iterable(rules))))
 
     rules, result = set_clause(rules, result, [variable])
     history.append((variable, deepcopy(rules), deepcopy(result)))
 
     putnam(rules, result, history)
+
+
+def heuristic1(rules):
+    variable_dict = dict(Counter(chain.from_iterable(rules)))
+
+    return max(variable_dict, key=variable_dict.get)
+
+
+def heuristic2(rules):
+    variable_dict = dict(Counter(chain.from_iterable(rules)))
+    values = [variable_dict[key] for key in variable_dict.keys()]
+    probabilities = [(value/sum(values)) for value in values]
+
+    return np.random.choice(list(variable_dict.keys()), size=1, p=probabilities)[0]
 
 
 def putnam(rules, result, history, first_it=False):
@@ -216,6 +234,7 @@ def sat_solver(filename, n_rows, sample_size):
     i = 1
     for sudoku in sudokus:
         print('\n\nSUDOKU', i)
+
         putnam_counter, backtrack_counter, split_counter, t, i = adjust_counters(i)
 
         rules = deepcopy(base_rules)
@@ -229,6 +248,6 @@ def sat_solver(filename, n_rows, sample_size):
               '\nputnam its:\t', putnam_counter)
 
 
-# putnam([[-1, 2], [1, 2], [-2]], {1: 'uk',2: 'uk',3: 'uk', 4: 'uk'},
+# putnam([[-1, 2], [1, 2], [-2, 3], [2, 4], {1: 'uk',2: 'uk',3: 'uk', 4: 'uk'},
 #       history=list(), first_it=True)
 sat_solver('1000 sudokus', 9, 20)
