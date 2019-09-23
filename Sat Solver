@@ -7,7 +7,7 @@ import sys
 import numpy as np
 import pandas as pd
 import random
-sys.setrecursionlimit(10000)
+sys.setrecursionlimit(100000)
 
 rules_filename = 'sudoku-rules.txt'
 backtrack_counter = 0
@@ -15,12 +15,15 @@ split_counter = 0
 putnam_counter = 0
 np.random.seed(123)
 random.seed(123)
-HEURISTIC = 'Random'
+HEURISTIC = 'Deter'
 
 
-def get_rules_result_format():
-    file = open(rules_filename, 'r')
-    text = file.readlines()
+def dimacs_to_cnf(filename=None, dimacs=None):
+    if dimacs is None:
+        file = open(filename, 'r')
+        text = file.readlines()
+    else:  # filename == None:
+        text = dimacs.split(' 0\n')
 
     rules = list()
     app = rules.append
@@ -28,7 +31,7 @@ def get_rules_result_format():
         app(list(map(int, row.strip(' 0\n').split(' '))))
 
     result = dict()
-    for x in list(set(chain.from_iterable(rules))):
+    for x in list(set(map(abs, chain.from_iterable(rules)))):
         if x > 0:
             result[x] = 'unknown'
 
@@ -236,31 +239,30 @@ def putnam(rules, result, history):
         return format_result(result)
 
 
-def sat_solver(filename, n_rows, sample_size):
-    global backtrack_counter, split_counter, putnam_counter
+# get the rules and the result template from the dimacs file and give them to the putnam function
+base_rules, result_template = dimacs_to_cnf(rules_filename)
+sudokus = get_sudokus('1000 sudokus', 9, 100)
+dataset = pd.DataFrame(columns=['Id', 'Heuristic', 'Time', 'Backtracks', 'Splits', 'Putnam calls'])
 
-    base_rules, result_template = get_rules_result_format()
-    sudokus = get_sudokus(filename, n_rows, sample_size)
-    dataset = pd.DataFrame(columns=['Id', 'Time', 'Backtracks', 'Splits', 'Putnam calls'])
+i = 0
+for sudoku in sudokus:
+    print('SUDOKU', i+1)
+    putnam_counter, backtrack_counter, split_counter, t, i = adjust_counters(i)
 
-    i = 0
-    for sudoku in sudokus:
-        print('SUDOKU', i+1)
-        putnam_counter, backtrack_counter, split_counter, t, i = adjust_counters(i)
+    rules = deepcopy(base_rules)
+    rules.extend(sudoku)
+    result = deepcopy(result_template)
 
-        rules = deepcopy(base_rules)
-        rules.extend(sudoku)
-        result = deepcopy(result_template)
-
-        putnam(rules, result, history=list())
-
-        dataset = dataset.append({'Id': i, 'Time': timer() - t, 'Backtracks': backtrack_counter,
-                                  'Splits': split_counter, 'Putnam calls': putnam_counter}, ignore_index=True)
-    return dataset
+    putnam(rules, result, history=list())  # give an empty list as history in the first function call
 
 
-#putnam([[-1, 2], [1, 2], [-2, 3], [2, 4], [2], [2, -2]], {1: 'uk',2: 'uk',3: 'uk', 4: 'uk'}, history=list())
-dataset = sat_solver('1000 sudokus', 9, 20)
+    dataset = dataset.append({'Id': i, 'Heuristic': HEURISTIC, 'Time': timer() - t, 'Backtracks': backtrack_counter,
+                              'Splits': split_counter, 'Putnam calls': putnam_counter}, ignore_index=True)
 
-filename = f'Sat_solver_{HEURISTIC}.xls'
+# example for using the satsolver based on a dimacs in text
+# adimacs = 'a pnf 6 4\n1 -2 3 0\n2 4 -5 6 0\n -1 3 4 0\n -4 6'
+# rules, result = dimacs_to_cnf(dimacs=adimacs)
+# result = putnam(rules, result, history=list())
+
+filename = f'Sat_solver_{HEURISTIC}part4.xls'
 dataset.to_excel(filename, index=False)
