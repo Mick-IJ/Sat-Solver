@@ -6,15 +6,16 @@ import sys
 import numpy as np
 import pandas as pd
 import random
-sys.setrecursionlimit(100000)
+
+sys.setrecursionlimit(10000000)
 
 rules_filename = 'sudoku-rules.txt'
 backtrack_counter = 0
 split_counter = 0
 putnam_counter = 0
-np.random.seed(123)
-random.seed(123)
-HEURISTIC = 'RANDOM'
+np.random.seed(25)
+random.seed(25)
+HEURISTIC = 'DLIS'
 
 
 def dimacs_to_cnf(filename=None, dimacs=None):
@@ -43,16 +44,16 @@ def get_sudokus(filename, n_rows, samplesize):
 
     puzzles = list()
     start_list = list()
-    for i in range(1, n_rows+1):
-        for j in range(1, n_rows+1):
-            start_list.append(int(str(i)+str(j)))
+    for i in range(1, n_rows + 1):
+        for j in range(1, n_rows + 1):
+            start_list.append(int(str(i) + str(j)))
 
     for sudoku in random.sample(text, samplesize):
         sudoku_clauses = list()
         app = sudoku_clauses.append
-        for i in range(n_rows*n_rows):
+        for i in range(n_rows * n_rows):
             if sudoku[i] != '.':
-                app([int(str(start_list[i])+str(sudoku[i]))])
+                app([int(str(start_list[i]) + str(sudoku[i]))])
         puzzles.append(sudoku_clauses)
 
     return puzzles
@@ -79,7 +80,6 @@ def adjust_counters(i):
 
 
 def check_tautology(clause):
-
     for variable in clause:
         if -variable in clause:
             return True
@@ -189,12 +189,14 @@ def split(rules, result, history, heuristic='RANDOM'):
     split_counter += 1
 
     if heuristic == 'DLIS':
-        variable = heuristic1(rules)
+        variable = DLIS(rules)
     elif heuristic == 'PDLIS':
-        variable = heuristic2(rules)
+        variable = PDLIS(rules)
     elif heuristic == 'RDLIS':
-        variable = heuristic3(rules)
-    else:  # heuristic == 'Random'
+        variable = RDLIS(rules)
+    elif heuristic == 'RPDLIS':
+        variable = RPDLIS(rules)
+    else:  # heuristic == 'RANDOM'
         variable = random.choice(list(set(chain.from_iterable(rules))))
 
     history.append((variable, deepcopy(rules), deepcopy(result)))
@@ -203,24 +205,32 @@ def split(rules, result, history, heuristic='RANDOM'):
     putnam(rules, result, history)
 
 
-def heuristic1(rules):
+def DLIS(rules):
     variable_dict = dict(Counter(chain.from_iterable(rules)))
 
-    return max(variable_dict, key=variable_dict.get)
+    return min(variable_dict, key=variable_dict.get)
 
 
-def heuristic2(rules):
+def PDLIS(rules):
     variable_dict = dict(Counter(chain.from_iterable(rules)))
     values = [variable_dict[key] for key in variable_dict.keys()]
-    probabilities = [(value/sum(values)) for value in values]
+    probabilities = [(value / sum(values)) for value in values]
 
     return np.random.choice(list(variable_dict.keys()), size=1, p=probabilities)[0]
 
 
-def heuristic3(rules):
+def RDLIS(rules):
     variable_dict = dict(Counter(chain.from_iterable(rules)))
 
-    return (max(variable_dict, key=variable_dict.get))*(random.sample([-1, 1], 1)[0])
+    return (max(variable_dict, key=variable_dict.get)) * (random.sample([-1, 1], 1)[0])
+
+
+def RPDLIS(rules):
+    variable_dict = dict(Counter(chain.from_iterable(rules)))
+    values = [variable_dict[key] for key in variable_dict.keys()]
+    probabilities = [(value / sum(values)) for value in values]
+
+    return np.random.choice(list(variable_dict.keys()), size=1, p=probabilities)[0] * (random.sample([-1, 1], 1)[0])
 
 
 def putnam(rules, result, history):
@@ -248,20 +258,18 @@ def putnam(rules, result, history):
 
 # get the rules and the result template from the dimacs file and give them to the putnam function
 base_rules, result_template = dimacs_to_cnf(rules_filename)
-sudokus = get_sudokus('1000 sudokus', 9, 20)
+sudokus = get_sudokus('1000 sudokus', 9, 200)
 dataset = pd.DataFrame(columns=['Id', 'Heuristic', 'Time', 'Backtracks', 'Splits', 'Putnam calls'])
 
 i = 0
 for sudoku in sudokus:
-    print('SUDOKU', i+1)
+    print('SUDOKU', i + 1)
     putnam_counter, backtrack_counter, split_counter, t, i = adjust_counters(i)
 
     rules = deepcopy(base_rules)
     rules.extend(sudoku)
     result = deepcopy(result_template)
-
     putnam(rules, result, history=list())  # give an empty list as history in the first function call
-
 
     dataset = dataset.append({'Id': i, 'Heuristic': HEURISTIC, 'Time': timer() - t, 'Backtracks': backtrack_counter,
                               'Splits': split_counter, 'Putnam calls': putnam_counter}, ignore_index=True)
